@@ -1,12 +1,26 @@
 """Fingerprinting service - detects call/response sections using pitch-based features."""
 import json
 import uuid
+import sys
 from pathlib import Path
 from typing import List, Tuple, Optional
 import numpy as np
 import librosa
 from scipy.spatial.distance import euclidean
 from scipy.ndimage import median_filter
+
+
+def log(message: str):
+    """Print and flush immediately."""
+    print(message)
+    sys.stdout.flush()
+
+
+def progress_bar(percent, width=30):
+    """Create a simple text progress bar."""
+    filled = int(width * percent / 100)
+    bar = '=' * filled + '-' * (width - filled)
+    return f"[{bar}] {percent:3d}%"
 
 
 class FingerprintingService:
@@ -94,7 +108,11 @@ class FingerprintingService:
         call_distances = []
         response_distances = []
 
-        for start_sample in range(0, len(y) - window_samples, hop_samples):
+        # Calculate total windows for progress
+        total_windows = (len(y) - window_samples) // hop_samples
+        last_pct = 0
+
+        for i, start_sample in enumerate(range(0, len(y) - window_samples, hop_samples)):
             end_sample = start_sample + window_samples
             window = y[start_sample:end_sample]
 
@@ -107,6 +125,14 @@ class FingerprintingService:
             times.append(time)
             call_distances.append(call_dist)
             response_distances.append(response_dist)
+
+            # Progress update every 10%
+            pct = int(100 * (i + 1) / total_windows)
+            if pct >= last_pct + 10:
+                # Map 0-100% of this step to 45-75% overall
+                overall_pct = 45 + int(30 * (i + 1) / total_windows)
+                log(progress_bar(overall_pct))
+                last_pct = pct
 
         return np.array(times), np.array(call_distances), np.array(response_distances)
 
@@ -196,39 +222,37 @@ class FingerprintingService:
         If no reference sections provided, uses automatic detection based on
         pitch differences (assumes call is lower pitch than response).
         """
-        print(f"\n{'=' * 50}")
-        print("SECTION DETECTION (FINGERPRINTING)")
-        print(f"{'=' * 50}")
+        log("Section Detection")
+        log(progress_bar(5))
 
-        print("\n[1/3] Loading vocals...")
         y, sr = librosa.load(vocals_path, sr=None, mono=True)
         duration = len(y) / sr
-        print(f"  Duration: {duration:.1f} seconds")
-        print(f"  Sample rate: {sr}Hz")
-        print(f"  Samples: {len(y):,}")
+        log(f"Duration: {duration/60:.1f} min")
+        log(progress_bar(10))
 
         # If no references provided, use automatic initial segmentation
         if call_references is None or response_references is None:
-            print("\n[2/3] Running automatic section detection...")
-            print("  (No reference sections provided, using pitch-based clustering)")
+            log("Using automatic pitch-based detection...")
             sections = self._auto_detect_sections(y, sr, duration)
         else:
-            print("\n[2/3] Building fingerprints from references...")
-            print(f"  Call references: {len(call_references)}")
-            print(f"  Response references: {len(response_references)}")
+            log(f"Using {len(call_references)} call + {len(response_references)} response references")
+            log(progress_bar(20))
 
             # Build fingerprints from provided references
             call_fingerprint = self.build_fingerprint(y, sr, call_references)
             response_fingerprint = self.build_fingerprint(y, sr, response_references)
+            log(progress_bar(40))
 
-            print("\n[3/3] Computing distances and segmenting...")
-            # Compute distances
+            log("Computing distances...")
             times, call_dist, response_dist = self.compute_distances(
                 y, sr, call_fingerprint, response_fingerprint
             )
+            log(progress_bar(80))
 
             # Segment
             sections = self.segment_by_distance(times, call_dist, response_dist)
+
+        log(progress_bar(90))
 
         # Save sections
         output_dir = Path(output_dir)
@@ -239,13 +263,8 @@ class FingerprintingService:
         # Summary
         calls = sum(1 for s in sections if s['label'] == 'call')
         responses = len(sections) - calls
-        print(f"\n[3/3] Results:")
-        print(f"  Total sections: {len(sections)}")
-        print(f"  Call sections: {calls}")
-        print(f"  Response sections: {responses}")
-        print(f"\n{'=' * 50}")
-        print("SECTION DETECTION COMPLETE")
-        print(f"{'=' * 50}")
+        log(progress_bar(100))
+        log(f"Found {calls} call + {responses} response sections")
 
         return sections
 
@@ -256,22 +275,15 @@ class FingerprintingService:
         Uses onset detection and pitch analysis to find vocal segments,
         then clusters by pitch to separate call from response.
         """
-        import sys
-
-        print("  Step 1: Detecting vocal activity regions...")
-        # Detect onsets to find vocal activity regions
-        onset_env = librosa.onset.onset_strength(y=y, sr=sr)
-        onsets = librosa.onset.onset_detect(onset_envelope=onset_env, sr=sr, units='time')
-        print(f"    Found {len(onsets)} onset events")
+        log(progress_bar(15))
+        log("Detecting vocal activity...")
 
         # Find segments with significant vocal activity using RMS
-        print("  Step 2: Computing RMS energy...")
         rms = librosa.feature.rms(y=y, hop_length=512)[0]
         times = librosa.times_like(rms, sr=sr, hop_length=512)
 
         # Threshold for vocal activity (adaptive based on track)
-        threshold = np.percentile(rms, 30)  # Above 30th percentile
-        print(f"    RMS threshold (30th percentile): {threshold:.4f}")
+        threshold = np.percentile(rms, 30)
 
         # Find contiguous regions above threshold
         is_active = rms > threshold
@@ -279,10 +291,8 @@ class FingerprintingService:
         starts = np.where(changes == 1)[0]
         ends = np.where(changes == -1)[0]
 
-        print(f"    Found {len(starts)} potential vocal regions")
-
         if len(starts) == 0:
-            print("    WARNING: No vocal activity detected!")
+            log("No vocal activity detected!")
             return []
 
         # Align starts and ends
@@ -291,8 +301,9 @@ class FingerprintingService:
         if len(starts) > len(ends):
             starts = starts[:len(ends)]
 
-        # Create initial segments with pitch analysis
-        print(f"  Step 3: Analyzing pitch for each segment...")
+        log(progress_bar(30))
+        log(f"Analyzing pitch for {len(starts)} regions...")
+
         segments = []
         total_regions = len(starts)
 
@@ -302,10 +313,10 @@ class FingerprintingService:
             duration_seg = end_time - start_time
 
             if duration_seg >= 1.0:  # Minimum 1 second
-                # Progress indicator
-                if (i + 1) % 10 == 0 or i == total_regions - 1:
-                    print(f"    Analyzing segment {i+1}/{total_regions}...")
-                    sys.stdout.flush()
+                # Progress update every 20%
+                pct = 30 + int(50 * (i + 1) / total_regions)
+                if i % max(1, total_regions // 5) == 0:
+                    log(progress_bar(pct))
 
                 # Extract segment and compute pitch
                 start_sample = int(start_time * sr)
@@ -324,11 +335,9 @@ class FingerprintingService:
                         'pitch': median_pitch
                     })
 
-        print(f"    Analyzed {len(segments)} segments with valid pitch data")
+        log(progress_bar(85))
 
         if len(segments) < 2:
-            print(f"    WARNING: Only {len(segments)} segments found, not enough to classify")
-            # Return all as call sections
             return [{
                 'id': f'section_{uuid.uuid4().hex[:8]}',
                 'start': s['start'],
@@ -339,17 +348,14 @@ class FingerprintingService:
             } for s in segments]
 
         # Cluster segments by pitch (simple median split)
-        print("  Step 4: Clustering by pitch...")
         pitches = [s['pitch'] for s in segments]
         median_pitch = np.median(pitches)
-        print(f"    Median pitch threshold: {median_pitch:.1f} Hz")
-        print(f"    Pitch range: {min(pitches):.1f} - {max(pitches):.1f} Hz")
 
         sections = []
         for seg in segments:
             # Lower pitch = call, higher pitch = response
             label = 'call' if seg['pitch'] < median_pitch else 'response'
-            confidence = abs(seg['pitch'] - median_pitch) / median_pitch  # Higher diff = more confident
+            confidence = abs(seg['pitch'] - median_pitch) / median_pitch
 
             sections.append({
                 'id': f'section_{uuid.uuid4().hex[:8]}',
@@ -357,14 +363,8 @@ class FingerprintingService:
                 'end': float(seg['end']),
                 'label': label,
                 'is_reference': False,
-                'confidence': float(min(0.9, confidence))  # Cap at 0.9
+                'confidence': float(min(0.9, confidence))
             })
-
-        print(f"Auto-detected {len(sections)} sections")
-        calls = sum(1 for s in sections if s['label'] == 'call')
-        responses = len(sections) - calls
-        print(f"  - {calls} call sections")
-        print(f"  - {responses} response sections")
 
         return sections
 

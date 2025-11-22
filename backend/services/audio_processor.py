@@ -18,6 +18,42 @@ def simple_progress_bar(percent, width=30):
     return f"[{bar}] {percent:3d}%"
 
 
+def log(message: str):
+    """Print and flush immediately."""
+    print(message)
+    sys.stdout.flush()
+
+
+class SimpleProgressBar:
+    """Custom tqdm-compatible progress bar with minimal output."""
+
+    def __init__(self, iterable=None, total=None, **kwargs):
+        self.iterable = iterable
+        self.total = total if total is not None else (len(iterable) if iterable is not None else 0)
+        self.n = 0
+        self.last_printed = -1
+
+    def __iter__(self):
+        for item in self.iterable:
+            yield item
+            self.update(1)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        pass
+
+    def update(self, n=1):
+        self.n += n
+        if self.total > 0:
+            pct = int(100 * self.n / self.total)
+            # Only print every 5%
+            if pct >= self.last_printed + 5:
+                log(simple_progress_bar(pct))
+                self.last_printed = pct
+
+
 class AudioProcessorService:
     """Service for audio processing operations."""
 
@@ -49,16 +85,14 @@ class AudioProcessorService:
         from pydub import AudioSegment
         from demucs.apply import apply_model
 
-        print(f"Separating vocals from: {os.path.basename(input_path)}")
+        log(f"Separating vocals from: {os.path.basename(input_path)}")
 
         # Load audio
-        print(simple_progress_bar(5))
         audio = AudioSegment.from_file(input_path)
         duration_sec = len(audio) / 1000.0
-        print(f"Duration: {duration_sec/60:.1f} min")
+        log(f"Duration: {duration_sec/60:.1f} min")
 
         # Convert to tensor
-        print(simple_progress_bar(10))
         samples = np.array(audio.get_array_of_samples())
         if audio.channels == 2:
             samples = samples.reshape((-1, 2)).T
@@ -68,7 +102,6 @@ class AudioProcessorService:
         sr = audio.frame_rate
 
         # Load model
-        print(simple_progress_bar(15))
         model = self._load_model()
 
         # Resample if necessary
@@ -82,29 +115,27 @@ class AudioProcessorService:
         if waveform.shape[0] == 1:
             waveform = waveform.repeat(2, 1)
 
-        # Apply model (suppress tqdm output)
-        print(simple_progress_bar(20))
-        print("Running separation (this takes a while)...")
+        # Apply model with simple progress output
+        log("Running separation...")
 
-        import io
-        from contextlib import redirect_stderr
+        import tqdm
+        original_tqdm = tqdm.tqdm
+        tqdm.tqdm = SimpleProgressBar
 
-        with torch.no_grad():
-            # Suppress tqdm output by redirecting stderr
-            try:
-                with redirect_stderr(io.StringIO()):
+        try:
+            with torch.no_grad():
+                try:
                     sources = apply_model(
                         model,
                         waveform.unsqueeze(0),
                         device='cpu',
-                        progress=False,
+                        progress=True,
                         num_workers=0
                     )[0]
-            except TypeError:
-                with redirect_stderr(io.StringIO()):
+                except TypeError:
                     sources = apply_model(model, waveform.unsqueeze(0), device='cpu')[0]
-
-        print(simple_progress_bar(90))
+        finally:
+            tqdm.tqdm = original_tqdm
 
         # Save vocals
         source_names = model.sources
@@ -116,8 +147,8 @@ class AudioProcessorService:
         vocals_np = sources[vocals_idx].cpu().numpy().T
         sf.write(str(vocals_path), vocals_np, sr)
 
-        print(simple_progress_bar(100))
-        print("Vocal separation complete!")
+        log(simple_progress_bar(100))
+        log("Vocal separation complete!")
 
         return str(vocals_path)
 

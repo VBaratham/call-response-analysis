@@ -1,9 +1,23 @@
 """Pitch estimation service - extracts pitch contours for entire track."""
 import json
+import sys
 from pathlib import Path
 from typing import List, Optional
 import numpy as np
 import librosa
+
+
+def log(message: str):
+    """Print and flush immediately."""
+    print(message)
+    sys.stdout.flush()
+
+
+def progress_bar(percent, width=30):
+    """Create a simple text progress bar."""
+    filled = int(width * percent / 100)
+    bar = '=' * filled + '-' * (width - filled)
+    return f"[{bar}] {percent:3d}%"
 
 
 class PitchEstimatorService:
@@ -31,34 +45,54 @@ class PitchEstimatorService:
         Returns:
             Summary statistics
         """
-        import sys
+        log("Pitch Estimation")
+        log(progress_bar(0))
 
-        print(f"\n{'=' * 50}")
-        print("PITCH ESTIMATION (FULL TRACK)")
-        print(f"{'=' * 50}")
-
-        print("\n[1/2] Loading vocals...")
+        log("Loading vocals...")
         y, sr = librosa.load(vocals_path, sr=None, mono=True)
         duration = len(y) / sr
-        print(f"  Duration: {duration:.1f} seconds")
-        print(f"  Sample rate: {sr}Hz")
+        log(f"Duration: {duration/60:.1f} min")
+        log(progress_bar(5))
 
-        print("\n[2/2] Extracting pitch contour for entire track...")
-        print("  This may take a while for long tracks...")
-        sys.stdout.flush()
+        log("Extracting pitch contour...")
 
-        # Extract pitch using pyin for entire track
-        f0, voiced_flag, voiced_prob = librosa.pyin(
-            y, fmin=self.fmin, fmax=self.fmax, sr=sr,
-            frame_length=2048, hop_length=self.hop_length
-        )
+        # Process in chunks to show progress
+        chunk_duration = 30  # seconds per chunk
+        chunk_samples = int(chunk_duration * sr)
+        n_chunks = max(1, len(y) // chunk_samples + (1 if len(y) % chunk_samples else 0))
+
+        all_f0 = []
+        all_voiced = []
+        all_prob = []
+
+        for i in range(n_chunks):
+            start = i * chunk_samples
+            end = min((i + 1) * chunk_samples, len(y))
+            chunk = y[start:end]
+
+            f0_chunk, voiced_chunk, prob_chunk = librosa.pyin(
+                chunk, fmin=self.fmin, fmax=self.fmax, sr=sr,
+                frame_length=2048, hop_length=self.hop_length
+            )
+
+            all_f0.append(f0_chunk)
+            all_voiced.append(voiced_chunk)
+            all_prob.append(prob_chunk)
+
+            # Progress from 10% to 85%
+            pct = 10 + int(75 * (i + 1) / n_chunks)
+            log(progress_bar(pct))
+
+        # Concatenate results
+        f0 = np.concatenate(all_f0)
+        voiced_flag = np.concatenate(all_voiced)
+        voiced_prob = np.concatenate(all_prob)
 
         # Convert to time
         times = librosa.times_like(f0, sr=sr, hop_length=self.hop_length)
 
-        print(f"  Extracted {len(times)} pitch frames")
         voiced_count = np.sum(voiced_flag)
-        print(f"  Voiced frames: {voiced_count} ({100*voiced_count/len(times):.1f}%)")
+        log(f"Extracted {len(times)} frames, {voiced_count} voiced")
 
         # Build pitch data structure
         pitch_data = []
@@ -74,6 +108,7 @@ class PitchEstimatorService:
             })
 
         # Save full pitch data
+        log(progress_bar(90))
         output_dir = Path(output_dir)
         pitch_path = output_dir / "pitch_full.json"
         with open(pitch_path, 'w') as f:
@@ -85,11 +120,8 @@ class PitchEstimatorService:
                 'pitch': pitch_data
             }, f)
 
-        print(f"  Saved to: {pitch_path.name}")
-
-        print(f"\n{'=' * 50}")
-        print("PITCH ESTIMATION COMPLETE")
-        print(f"{'=' * 50}")
+        log(progress_bar(100))
+        log("Pitch estimation complete")
 
         return {
             'duration': duration,
@@ -110,16 +142,11 @@ class PitchEstimatorService:
         Returns:
             Summary statistics
         """
-        import sys
+        log("Pair Pitch Estimation")
+        log(progress_bar(0))
 
-        print(f"\n{'=' * 50}")
-        print("PITCH ESTIMATION")
-        print(f"{'=' * 50}")
-
-        print("\n[1/3] Loading vocals...")
         y, sr = librosa.load(vocals_path, sr=None, mono=True)
-        print(f"  Duration: {len(y)/sr:.1f} seconds")
-        print(f"  Sample rate: {sr}Hz")
+        log(f"Duration: {len(y)/sr/60:.1f} min")
 
         output_dir = Path(output_dir)
 
@@ -129,10 +156,8 @@ class PitchEstimatorService:
 
         # Match pairs
         n_pairs = min(len(calls), len(responses))
-        print(f"\n[2/3] Extracting pitch contours for {n_pairs} pairs...")
-        print(f"  Call sections: {len(calls)}")
-        print(f"  Response sections: {len(responses)}")
-        print(f"  Pairs to process: {n_pairs}")
+        log(f"Processing {n_pairs} pairs...")
+        log(progress_bar(5))
 
         alignments = []
 
@@ -140,28 +165,17 @@ class PitchEstimatorService:
             call = calls[i]
             response = responses[i]
 
-            print(f"\n  Pair {i+1}/{n_pairs}:")
-            print(f"    Call: {call['start']:.1f}s - {call['end']:.1f}s ({call['end']-call['start']:.1f}s)")
-            print(f"    Response: {response['start']:.1f}s - {response['end']:.1f}s ({response['end']-response['start']:.1f}s)")
-            sys.stdout.flush()
-
             # Extract call pitch
-            print(f"    Extracting call pitch...")
             call_start = int(call['start'] * sr)
             call_end = int(call['end'] * sr)
             call_audio = y[call_start:call_end]
             call_pitch = self.extract_pitch_contour(call_audio, sr, call['start'])
-            call_voiced = sum(1 for p in call_pitch if p['voiced'])
-            print(f"      {len(call_pitch)} frames, {call_voiced} voiced ({100*call_voiced/len(call_pitch):.0f}%)")
 
             # Extract response pitch
-            print(f"    Extracting response pitch...")
             resp_start = int(response['start'] * sr)
             resp_end = int(response['end'] * sr)
             resp_audio = y[resp_start:resp_end]
             response_pitch = self.extract_pitch_contour(resp_audio, sr, response['start'])
-            resp_voiced = sum(1 for p in response_pitch if p['voiced'])
-            print(f"      {len(response_pitch)} frames, {resp_voiced} voiced ({100*resp_voiced/len(response_pitch):.0f}%)")
 
             # Save pitch data
             call_path = output_dir / f"pitch_call_{i}.json"
@@ -173,10 +187,7 @@ class PitchEstimatorService:
                 json.dump(response_pitch, f)
 
             # Calculate optimal alignment
-            print(f"    Finding optimal alignment...")
             optimal_offset, correlation = self.find_optimal_offset(call_pitch, response_pitch)
-            print(f"      Optimal offset: {optimal_offset:+.3f}s")
-            print(f"      Correlation: {correlation:.3f}" if correlation else "      Correlation: N/A")
 
             alignments.append({
                 'pair_id': i,
@@ -187,19 +198,17 @@ class PitchEstimatorService:
                 'custom_offset': None
             })
 
-            print(f"  Pair {i}: offset={optimal_offset:.3f}s, correlation={correlation:.3f if correlation else 'N/A'}")
+            # Progress from 10% to 90%
+            pct = 10 + int(80 * (i + 1) / n_pairs)
+            log(progress_bar(pct))
 
         # Save alignments
         alignments_path = output_dir / "alignments.json"
         with open(alignments_path, 'w') as f:
             json.dump(alignments, f, indent=2)
 
-        print(f"\n[3/3] Results:")
-        print(f"  Pairs processed: {n_pairs}")
-        print(f"  Alignments saved to: {alignments_path.name}")
-        print(f"\n{'=' * 50}")
-        print("PITCH ESTIMATION COMPLETE")
-        print(f"{'=' * 50}")
+        log(progress_bar(100))
+        log(f"Processed {n_pairs} pairs")
 
         return {
             'pairs_processed': n_pairs,
