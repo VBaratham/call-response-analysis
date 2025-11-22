@@ -8,6 +8,13 @@
       </p>
     </div>
 
+    <div v-if="hasKnownReferences" class="known-references-banner">
+      <span>This sample file has pre-defined reference sections.</span>
+      <button class="btn btn-highlight" @click="$emit('use-known-references')">
+        Use Known References
+      </button>
+    </div>
+
     <div class="reference-summary">
       <div class="reference-group call">
         <h3>Call References ({{ referenceSections.call.length }})</h3>
@@ -99,10 +106,14 @@ const props = defineProps({
   referenceSections: {
     type: Object,
     default: () => ({ call: [], response: [] })
+  },
+  hasKnownReferences: {
+    type: Boolean,
+    default: false
   }
 })
 
-const emit = defineEmits(['add-reference', 'remove-reference', 'run-segmentation', 'skip-references'])
+const emit = defineEmits(['add-reference', 'remove-reference', 'run-segmentation', 'skip-references', 'use-known-references'])
 
 let wavesurfer = null
 let regionsPlugin = null
@@ -135,6 +146,8 @@ function initWavesurfer() {
     height: 200,
     normalize: true,
     minPxPerSec: 50,
+    autoScroll: false,
+    autoCenter: false,
     plugins: [
       regionsPlugin,
       TimelinePlugin.create({
@@ -166,6 +179,10 @@ function initWavesurfer() {
     isPlaying.value = false
   })
 
+  wavesurfer.on('finish', () => {
+    isPlaying.value = false
+  })
+
   regionsPlugin.on('region-created', (region) => {
     if (pendingRegion.value && pendingRegion.value.id !== region.id) {
       try {
@@ -181,25 +198,34 @@ function initWavesurfer() {
 
 function renderReferences() {
   if (!regionsPlugin) return
-  regionsPlugin.clearRegions()
 
+  // Get all current regions and remove only reference regions (not pending selection)
+  const existingRegions = regionsPlugin.getRegions()
+  existingRegions.forEach(region => {
+    if (region.id.startsWith('ref_') || region.id.startsWith('known_')) {
+      region.remove()
+    }
+  })
+
+  // Add call reference sections (red)
   props.referenceSections.call.forEach(section => {
     regionsPlugin.addRegion({
       id: section.id,
       start: section.start,
       end: section.end,
-      color: 'rgba(233, 69, 96, 0.4)',
+      color: 'rgba(233, 69, 96, 0.5)',
       drag: false,
       resize: false
     })
   })
 
+  // Add response reference sections (blue)
   props.referenceSections.response.forEach(section => {
     regionsPlugin.addRegion({
       id: section.id,
       start: section.start,
       end: section.end,
-      color: 'rgba(74, 158, 255, 0.4)',
+      color: 'rgba(74, 158, 255, 0.5)',
       drag: false,
       resize: false
     })
@@ -245,9 +271,8 @@ function addPendingAsReference(label) {
 }
 
 function togglePlay() {
-  if (wavesurfer) {
-    wavesurfer.playPause()
-  }
+  if (!wavesurfer) return
+  wavesurfer.playPause()
 }
 
 function zoomIn() {
@@ -304,6 +329,32 @@ onUnmounted(() => {
   font-size: 0.9rem;
   max-width: 600px;
   margin: 0 auto;
+}
+
+.known-references-banner {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  background: rgba(76, 175, 80, 0.15);
+  border: 1px solid #4caf50;
+  border-radius: 8px;
+  color: #8bc34a;
+}
+
+.btn-highlight {
+  background: #4caf50;
+  color: white;
+  padding: 0.4rem 0.8rem;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.btn-highlight:hover {
+  background: #66bb6a;
 }
 
 .reference-summary {
