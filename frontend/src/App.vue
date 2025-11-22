@@ -29,10 +29,12 @@
         :audio-url="store.audioUrl"
         :duration="store.duration"
         :reference-sections="store.referenceSections"
+        :has-known-references="!!store.knownReferences"
         @add-reference="onAddReference"
         @remove-reference="onRemoveReference"
         @run-segmentation="onRunSegmentation"
         @skip-references="onSkipReferences"
+        @use-known-references="onUseKnownReferences"
       />
 
       <!-- Main Editor -->
@@ -171,6 +173,10 @@ async function onSkipReferences() {
   // Skip reference selection and run auto-detection
   store.clearReferenceSections()
   await store.runSegmentation()
+}
+
+function onUseKnownReferences() {
+  store.useKnownReferences()
 }
 
 async function exportProject() {

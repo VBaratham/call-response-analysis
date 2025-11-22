@@ -19,6 +19,7 @@ export const useProjectStore = defineStore('project', () => {
   const isProcessing = ref(false)
   const isSelectingReferences = ref(false)  // Whether user is selecting reference sections
   const referenceSections = ref({ call: [], response: [] })  // User-selected reference sections
+  const knownReferences = ref(null)  // Pre-defined references for sample files
 
   // Undo/Redo stacks
   const undoStack = ref([])
@@ -67,6 +68,13 @@ export const useProjectStore = defineStore('project', () => {
       // Load metadata
       const metaResponse = await api.getMetadata(id)
       metadata.value = metaResponse
+
+      // Check for known references (sample files)
+      if (metaResponse.known_references) {
+        knownReferences.value = metaResponse.known_references
+      } else {
+        knownReferences.value = null
+      }
 
       // Load sections if available
       if (metaResponse.has_sections) {
@@ -234,6 +242,24 @@ export const useProjectStore = defineStore('project', () => {
 
   function clearReferenceSections() {
     referenceSections.value = { call: [], response: [] }
+  }
+
+  function useKnownReferences() {
+    if (!knownReferences.value) return
+
+    // Convert known references to the format expected by referenceSections
+    referenceSections.value = {
+      call: knownReferences.value.call.map((r, i) => ({
+        id: `known_call_${i}`,
+        start: r.start,
+        end: r.end
+      })),
+      response: knownReferences.value.response.map((r, i) => ({
+        id: `known_resp_${i}`,
+        start: r.start,
+        end: r.end
+      }))
+    }
   }
 
   async function updateSections(newSections) {
@@ -449,6 +475,7 @@ export const useProjectStore = defineStore('project', () => {
     isProcessing.value = false
     isSelectingReferences.value = false
     referenceSections.value = { call: [], response: [] }
+    knownReferences.value = null
     undoStack.value = []
     redoStack.value = []
   }
@@ -470,6 +497,7 @@ export const useProjectStore = defineStore('project', () => {
     isProcessing,
     isSelectingReferences,
     referenceSections,
+    knownReferences,
 
     // Computed
     hasData,
@@ -485,6 +513,7 @@ export const useProjectStore = defineStore('project', () => {
     addReferenceSection,
     removeReferenceSection,
     clearReferenceSections,
+    useKnownReferences,
     updateSections,
     addSection,
     updateSection,

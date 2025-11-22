@@ -183,6 +183,20 @@ async def use_sample_file():
         shutil.rmtree(session_dir, ignore_errors=True)
         raise HTTPException(status_code=400, detail=f"Could not read sample file: {str(e)}")
 
+    # Known reference sections for Om Namah Shivaya (from vocal_fingerprinting_v3.py)
+    known_references = {
+        "call": [
+            {"start": 107, "end": 117},   # 1:47 - 1:57
+            {"start": 131, "end": 142},   # 2:11 - 2:22
+            {"start": 470, "end": 478},   # 7:50 - 7:58
+        ],
+        "response": [
+            {"start": 479, "end": 487},   # 7:59 - 8:07
+            {"start": 119, "end": 130},   # 1:59 - 2:10
+            {"start": 685, "end": 691},   # 11:25 - 11:31
+        ]
+    }
+
     # Save metadata
     metadata = {
         "session_id": session_id,
@@ -190,7 +204,9 @@ async def use_sample_file():
         "duration": duration,
         "sample_rate": sr,
         "channels": channels,
-        "processing_status": "uploaded"
+        "processing_status": "uploaded",
+        "is_sample": True,
+        "known_references": known_references
     }
     with open(session_dir / "metadata.json", "w") as f:
         json.dump(metadata, f, indent=2)
@@ -199,5 +215,7 @@ async def use_sample_file():
         "session_id": session_id,
         "filename": sample_file.name,
         "duration": duration,
+        "is_sample": True,
+        "known_references": known_references,
         "message": "Sample file loaded. Ready for processing."
     }

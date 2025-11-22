@@ -71,6 +71,18 @@ class PairAlignment(BaseModel):
     cosine_similarity: Optional[float] = None
 
 
+class ReferenceSection(BaseModel):
+    """A reference section time range."""
+    start: float
+    end: float
+
+
+class KnownReferences(BaseModel):
+    """Pre-defined reference sections for sample files."""
+    call: list[ReferenceSection]
+    response: list[ReferenceSection]
+
+
 class ProjectMetadata(BaseModel):
     """Metadata about the current project/session."""
     session_id: str
@@ -81,6 +93,8 @@ class ProjectMetadata(BaseModel):
     has_vocals: bool = False
     has_sections: bool = False
     has_pitch: bool = False
+    is_sample: bool = False
+    known_references: Optional[KnownReferences] = None
 
 
 class ProcessingStatus(BaseModel):
