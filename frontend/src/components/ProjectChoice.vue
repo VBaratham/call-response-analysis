@@ -32,7 +32,7 @@
     <input
       ref="importInput"
       type="file"
-      accept=".json"
+      accept=".zip,.json"
       @change="handleImport"
       hidden
     />

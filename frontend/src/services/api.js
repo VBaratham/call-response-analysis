@@ -163,8 +163,10 @@ export default {
 
   // Export/Import
   async exportProject(sessionId) {
-    const response = await client.get(`/sessions/${sessionId}/export`)
-    return response.data
+    const response = await client.get(`/sessions/${sessionId}/export`, {
+      responseType: 'blob'
+    })
+    return response
   },
 
   async importProject(sessionId, file) {

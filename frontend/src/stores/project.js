@@ -443,12 +443,18 @@ export const useProjectStore = defineStore('project', () => {
 
   async function exportProject() {
     try {
-      const data = await api.exportProject(sessionId.value)
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-      const url = URL.createObjectURL(blob)
+      const response = await api.exportProject(sessionId.value)
+      // Extract filename from Content-Disposition header or use default
+      const contentDisposition = response.headers['content-disposition']
+      let filename = `${sessionId.value}_project.zip`
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename="(.+)"/)
+        if (match) filename = match[1]
+      }
+      const url = URL.createObjectURL(response.data)
       const a = document.createElement('a')
       a.href = url
-      a.download = `${sessionId.value}_project.json`
+      a.download = filename
       a.click()
       URL.revokeObjectURL(url)
     } catch (error) {
