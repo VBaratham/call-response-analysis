@@ -152,7 +152,8 @@ async function onStartProcessing() {
 }
 
 async function onProjectImported() {
-  // Reload session to get imported data
+  // Clear the choice screen and reload session to get imported data
+  store.setAwaitingProjectChoice(false)
   await store.loadSession(store.sessionId)
 }
 
