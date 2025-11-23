@@ -488,7 +488,10 @@ function handleKeydown(e) {
   switch (e.key) {
     case ' ':
       e.preventDefault()
-      if (e.shiftKey) {
+      if (isPlaying.value) {
+        // If playing, always pause first
+        togglePlayback()
+      } else if (e.shiftKey) {
         // Shift+Space: play last 2 seconds
         playLastTwoSeconds()
       } else if (selectedSection.value) {
