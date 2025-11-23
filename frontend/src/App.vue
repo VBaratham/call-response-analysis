@@ -16,6 +16,14 @@
       <!-- File Upload -->
       <FileUpload v-if="!store.sessionId" @uploaded="onFileUploaded" />
 
+      <!-- Project Choice (after upload, before processing) -->
+      <ProjectChoice
+        v-else-if="store.isAwaitingProjectChoice"
+        :session-id="store.sessionId"
+        @start-processing="onStartProcessing"
+        @project-imported="onProjectImported"
+      />
+
       <!-- Processing Status -->
       <ProcessingStatus
         v-else-if="store.isProcessing"
@@ -109,6 +117,7 @@
 import { ref, onMounted } from 'vue'
 import { useProjectStore } from './stores/project'
 import FileUpload from './components/FileUpload.vue'
+import ProjectChoice from './components/ProjectChoice.vue'
 import ProcessingStatus from './components/ProcessingStatus.vue'
 import WaveformEditor from './components/WaveformEditor.vue'
 import PitchViewer from './components/PitchViewer.vue'
@@ -134,7 +143,17 @@ onMounted(async () => {
 async function onFileUploaded(sessionId) {
   localStorage.setItem('currentSession', sessionId)
   await store.loadSession(sessionId)
+  // Show choice: start processing or import existing project
+  store.setAwaitingProjectChoice(true)
+}
+
+async function onStartProcessing() {
   await store.startProcessing()
+}
+
+async function onProjectImported() {
+  // Reload session to get imported data
+  await store.loadSession(store.sessionId)
 }
 
 function onSectionsUpdated(sections) {

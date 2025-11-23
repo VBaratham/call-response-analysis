@@ -58,19 +58,9 @@
       <button class="btn btn-secondary" @click="error = null">Dismiss</button>
     </div>
 
-    <!-- Import existing project -->
-    <div class="import-section">
-      <h3>Or import an existing project</h3>
-      <input
-        ref="importInput"
-        type="file"
-        accept=".json"
-        @change="handleImport"
-        hidden
-      />
-      <button class="btn btn-secondary" @click="$refs.importInput.click()">
-        Import Project JSON
-      </button>
+    <!-- Import hint -->
+    <div class="import-hint">
+      <p>Have a saved project? Upload the audio first, then you'll be able to import your project file.</p>
     </div>
   </div>
 </template>
@@ -82,7 +72,6 @@ import api from '../services/api'
 const emit = defineEmits(['uploaded'])
 
 const fileInput = ref(null)
-const importInput = ref(null)
 const isDragOver = ref(false)
 const isUploading = ref(false)
 const isLoadingSample = ref(false)
@@ -144,24 +133,6 @@ async function uploadFile(file) {
     isUploading.value = false
     uploadProgress.value = 0
     fileName.value = ''
-  }
-}
-
-async function handleImport(event) {
-  const file = event.target.files[0]
-  if (!file) return
-
-  error.value = null
-
-  try {
-    const content = await file.text()
-    const projectData = JSON.parse(content)
-
-    // For import, we first need to upload the original audio file
-    // For now, show an error that they need to upload audio first
-    error.value = 'To import a project, first upload the original audio file, then import the project JSON.'
-  } catch (err) {
-    error.value = 'Invalid project JSON file.'
   }
 }
 
@@ -281,17 +252,15 @@ async function useSampleFile() {
   margin-bottom: 0.5rem;
 }
 
-.import-section {
+.import-hint {
   margin-top: 2rem;
-  padding-top: 2rem;
+  padding-top: 1.5rem;
   border-top: 1px solid #0f3460;
   text-align: center;
 }
 
-.import-section h3 {
-  font-size: 1rem;
-  font-weight: 500;
-  color: #888;
-  margin-bottom: 1rem;
+.import-hint p {
+  font-size: 0.9rem;
+  color: #666;
 }
 </style>

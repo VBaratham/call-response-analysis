@@ -18,6 +18,7 @@ export const useProjectStore = defineStore('project', () => {
   const processingLogs = ref([])
   const isProcessing = ref(false)
   const isSelectingReferences = ref(false)  // Whether user is selecting reference sections
+  const isAwaitingProjectChoice = ref(false)  // Whether user should choose to process or import
   const referenceSections = ref({ call: [], response: [] })  // User-selected reference sections
   const knownReferences = ref(null)  // Pre-defined references for sample files
 
@@ -99,7 +100,12 @@ export const useProjectStore = defineStore('project', () => {
     }
   }
 
+  function setAwaitingProjectChoice(value) {
+    isAwaitingProjectChoice.value = value
+  }
+
   async function startProcessing() {
+    isAwaitingProjectChoice.value = false
     isProcessing.value = true
     processingStatus.value = { stage: 'starting', progress: 0, message: 'Starting processing...' }
     processingLogs.value = []
@@ -474,6 +480,7 @@ export const useProjectStore = defineStore('project', () => {
     processingLogs.value = []
     isProcessing.value = false
     isSelectingReferences.value = false
+    isAwaitingProjectChoice.value = false
     referenceSections.value = { call: [], response: [] }
     knownReferences.value = null
     undoStack.value = []
@@ -496,6 +503,7 @@ export const useProjectStore = defineStore('project', () => {
     processingLogs,
     isProcessing,
     isSelectingReferences,
+    isAwaitingProjectChoice,
     referenceSections,
     knownReferences,
 
@@ -508,6 +516,7 @@ export const useProjectStore = defineStore('project', () => {
 
     // Actions
     loadSession,
+    setAwaitingProjectChoice,
     startProcessing,
     runSegmentation,
     addReferenceSection,
